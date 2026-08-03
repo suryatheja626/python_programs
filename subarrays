@@ -1,0 +1,331 @@
+1. Maximum Sum Subarray (Kadane's Algorithm)
+Question
+
+Find the maximum sum of a contiguous subarray.
+
+n = int(input())
+arr = list(map(int, input().split()))
+
+curr = ans = arr[0]
+
+for i in range(1, n):
+    curr = max(arr[i], curr + arr[i])
+    ans = max(ans, curr)
+
+print(ans)
+2. Minimum Sum Subarray
+n = int(input())
+arr = list(map(int, input().split()))
+
+curr = ans = arr[0]
+
+for i in range(1, n):
+    curr = min(arr[i], curr + arr[i])
+    ans = min(ans, curr)
+
+print(ans)
+3. Print Maximum Sum Subarray
+arr = list(map(int, input().split()))
+
+curr = arr[0]
+best = arr[0]
+start = end = temp = 0
+
+for i in range(1, len(arr)):
+    if curr + arr[i] < arr[i]:
+        curr = arr[i]
+        temp = i
+    else:
+        curr += arr[i]
+
+    if curr > best:
+        best = curr
+        start = temp
+        end = i
+
+print(arr[start:end+1])
+4. Count Subarrays with Sum K
+from collections import defaultdict
+
+arr = list(map(int, input().split()))
+k = int(input())
+
+prefix = 0
+count = 0
+
+mp = defaultdict(int)
+mp[0] = 1
+
+for x in arr:
+    prefix += x
+    count += mp[prefix-k]
+    mp[prefix] += 1
+
+print(count)
+5. Longest Subarray with Sum K
+arr = list(map(int, input().split()))
+k = int(input())
+
+mp = {}
+prefix = 0
+ans = 0
+
+for i in range(len(arr)):
+    prefix += arr[i]
+
+    if prefix == k:
+        ans = i + 1
+
+    if prefix-k in mp:
+        ans = max(ans, i-mp[prefix-k])
+
+    if prefix not in mp:
+        mp[prefix] = i
+
+print(ans)
+6. Smallest Subarray with Sum ≥ K
+arr = list(map(int, input().split()))
+k = int(input())
+
+left = 0
+total = 0
+ans = float('inf')
+
+for right in range(len(arr)):
+    total += arr[right]
+
+    while total >= k:
+        ans = min(ans, right-left+1)
+        total -= arr[left]
+        left += 1
+
+print(ans if ans != float('inf') else 0)
+7. Maximum Product Subarray
+arr = list(map(int, input().split()))
+
+mx = mn = ans = arr[0]
+
+for x in arr[1:]:
+
+    if x < 0:
+        mx, mn = mn, mx
+
+    mx = max(x, mx*x)
+    mn = min(x, mn*x)
+
+    ans = max(ans, mx)
+
+print(ans)
+8. Count Zero Sum Subarrays
+from collections import defaultdict
+
+arr = list(map(int, input().split()))
+
+prefix = 0
+count = 0
+
+mp = defaultdict(int)
+mp[0] = 1
+
+for x in arr:
+    prefix += x
+    count += mp[prefix]
+    mp[prefix] += 1
+
+print(count)
+9. Check if Any Subarray Sum = K
+arr = list(map(int, input().split()))
+k = int(input())
+
+prefix = 0
+seen = {0}
+
+for x in arr:
+    prefix += x
+
+    if prefix-k in seen:
+        print(True)
+        break
+
+    seen.add(prefix)
+else:
+    print(False)
+10. Largest Equal 0s and 1s Subarray
+arr = list(map(int, input().split()))
+
+mp = {0:-1}
+
+prefix = 0
+ans = 0
+
+for i,x in enumerate(arr):
+
+    if x == 0:
+        prefix -= 1
+    else:
+        prefix += 1
+
+    if prefix in mp:
+        ans = max(ans, i-mp[prefix])
+    else:
+        mp[prefix] = i
+
+print(ans)
+11. Count All Subarrays
+n = int(input())
+
+print(n*(n+1)//2)
+12. Print All Subarrays
+arr = list(map(int,input().split()))
+
+for i in range(len(arr)):
+    for j in range(i,len(arr)):
+        print(arr[i:j+1])
+13. Maximum Average Subarray of Size K
+arr = list(map(int,input().split()))
+k = int(input())
+
+window = sum(arr[:k])
+
+ans = window
+
+for i in range(k,len(arr)):
+    window += arr[i]-arr[i-k]
+    ans = max(ans,window)
+
+print(ans/k)
+14. Count Subarrays with Even Sum
+arr = list(map(int,input().split()))
+
+even = 1
+odd = 0
+
+prefix = 0
+ans = 0
+
+for x in arr:
+    prefix += x
+
+    if prefix % 2 == 0:
+        ans += even
+        even += 1
+    else:
+        ans += odd
+        odd += 1
+
+print(ans)
+15. Count Subarrays with Odd Sum
+arr = list(map(int,input().split()))
+
+even = 1
+odd = 0
+
+prefix = 0
+ans = 0
+
+for x in arr:
+    prefix += x
+
+    if prefix % 2 == 0:
+        ans += odd
+        even += 1
+    else:
+        ans += even
+        odd += 1
+
+print(ans)
+16. Longest Increasing Contiguous Subarray
+arr = list(map(int,input().split()))
+
+curr = ans = 1
+
+for i in range(1,len(arr)):
+
+    if arr[i] > arr[i-1]:
+        curr += 1
+    else:
+        curr = 1
+
+    ans = max(ans,curr)
+
+print(ans)
+17. Maximum Length Subarray with Equal Positive and Negative Numbers
+arr = list(map(int,input().split()))
+
+prefix = 0
+
+mp = {0:-1}
+
+ans = 0
+
+for i,x in enumerate(arr):
+
+    if x > 0:
+        prefix += 1
+    else:
+        prefix -= 1
+
+    if prefix in mp:
+        ans = max(ans,i-mp[prefix])
+    else:
+        mp[prefix]=i
+
+print(ans)
+18. Count Subarrays Divisible by K
+from collections import defaultdict
+
+arr = list(map(int,input().split()))
+k = int(input())
+
+count = defaultdict(int)
+
+count[0] = 1
+
+prefix = 0
+ans = 0
+
+for x in arr:
+    prefix += x
+
+    rem = prefix % k
+
+    ans += count[rem]
+
+    count[rem] += 1
+
+print(ans)
+19. Maximum Sum Circular Subarray
+arr = list(map(int,input().split()))
+
+total = sum(arr)
+
+currMax = bestMax = arr[0]
+currMin = bestMin = arr[0]
+
+for x in arr[1:]:
+
+    currMax = max(x,currMax+x)
+    bestMax = max(bestMax,currMax)
+
+    currMin = min(x,currMin+x)
+    bestMin = min(bestMin,currMin)
+
+if bestMax < 0:
+    print(bestMax)
+else:
+    print(max(bestMax,total-bestMin))
+20. Longest Alternating Subarray
+arr = list(map(int,input().split()))
+
+curr = ans = 1
+
+for i in range(1,len(arr)):
+
+    if (arr[i]%2)!=(arr[i-1]%2):
+        curr += 1
+    else:
+        curr = 1
+
+    ans = max(ans,curr)
+
+print(ans)
