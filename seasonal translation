@@ -1,0 +1,300 @@
+import sys, subprocess
+def pip_install(pkg):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
+try:
+    import torchmetrics
+    import torch_fidelity
+except Exception:
+    pip_install("torchmetrics[image]")
+    pip_install("torch-fidelity")
+import importlib
+importlib.invalidate_caches()
+
+import os, glob, time, math, itertools
+from pathlib import Path
+from PIL import Image
+import matplotlib.pyplot as plt
+from tqdm import tqdm
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
+from torchvision.utils import save_image
+from torchmetrics.image.fid import FrechetInceptionDistance
+from torchmetrics.image.inception import InceptionScore
+from torchmetrics.image.ssim import StructuralSimilarityIndexMeasure
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print("Device:", device)
+from google.colab import drive
+drive.mount("/content/drive", force_remount=True)
+
+DATA_ROOT = "/content/drive/MyDrive/yosemite"
+MODEL_DIR = "/content/drive/MyDrive/cyclegan_yosemite_results/models"
+SAMPLES_DIR = "/content/drive/MyDrive/cyclegan_yosemite_results/samples"
+os.makedirs(MODEL_DIR, exist_ok=True)
+os.makedirs(SAMPLES_DIR, exist_ok=True)
+IMAGE_SIZE = 256
+BATCH_SIZE = 1
+NUM_WORKERS = 2
+ADD_EPOCHS = 20
+VAL_SUBSET = 100
+
+import glob
+class UnlabeledImageDataset(Dataset):
+    def __init__(self, folder, transform=None):
+        self.files = sorted([p for ext in ("*.png","*.jpg","*.jpeg","*.bmp","*.tif") for p in glob.glob(os.path.join(folder, ext))])
+        if len(self.files) == 0:
+            raise RuntimeError(f"No images found in {folder}")
+        self.transform = transform
+    def __len__(self): return len(self.files)
+    def __getitem__(self, idx):
+        p = self.files[idx]
+        img = Image.open(p).convert("RGB")
+        if self.transform: img = self.transform(img)
+        return img, os.path.basename(p)
+
+from torchvision.transforms import InterpolationMode
+train_transform = transforms.Compose([
+    transforms.Resize(int(IMAGE_SIZE * 1.12), interpolation=InterpolationMode.BICUBIC),
+    transforms.RandomCrop(IMAGE_SIZE),
+    transforms.RandomHorizontalFlip(p=0.5),
+    transforms.ColorJitter(0.2,0.2,0.2,0.02),
+    transforms.ToTensor(),
+    transforms.Normalize([0.5]*3, [0.5]*3)
+])
+test_transform = transforms.Compose([
+    transforms.Resize(IMAGE_SIZE, interpolation=InterpolationMode.BICUBIC),
+    transforms.CenterCrop(IMAGE_SIZE),
+    transforms.ToTensor(),
+    transforms.Normalize([0.5]*3, [0.5]*3)
+])
+
+for sub in ["trainA","trainB","testA","testB"]:
+    if not os.path.isdir(os.path.join(DATA_ROOT, sub)):
+        raise FileNotFoundError(f"Missing folder: {os.path.join(DATA_ROOT, sub)}")
+
+trainA_ds = UnlabeledImageDataset(os.path.join(DATA_ROOT, "trainA"), transform=train_transform)
+trainB_ds = UnlabeledImageDataset(os.path.join(DATA_ROOT, "trainB"), transform=train_transform)
+testA_ds  = UnlabeledImageDataset(os.path.join(DATA_ROOT, "testA"), transform=test_transform)
+testB_ds  = UnlabeledImageDataset(os.path.join(DATA_ROOT, "testB"), transform=test_transform)
+
+trainA_loader = DataLoader(trainA_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS, drop_last=True)
+trainB_loader = DataLoader(trainB_ds, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS, drop_last=True)
+print("TrainA:", len(trainA_ds), "TrainB:", len(trainB_ds), "TestA:", len(testA_ds), "TestB:", len(testB_ds))
+
+class ResnetBlock(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.block = nn.Sequential(
+            nn.ReflectionPad2d(1),
+            nn.Conv2d(dim, dim, 3),
+            nn.InstanceNorm2d(dim),
+            nn.ReLU(True),
+            nn.ReflectionPad2d(1),
+            nn.Conv2d(dim, dim, 3),
+            nn.InstanceNorm2d(dim)
+        )
+    def forward(self,x): return x + self.block(x)
+
+class Generator(nn.Module):
+    def __init__(self, in_channels=3, out_channels=3, n_blocks=9):
+        super().__init__()
+        model = [nn.ReflectionPad2d(3), nn.Conv2d(in_channels,64,7), nn.InstanceNorm2d(64), nn.ReLU(True)]
+        dim = 64
+        for _ in range(2):
+            model += [nn.Conv2d(dim, dim*2, 3, stride=2, padding=1), nn.InstanceNorm2d(dim*2), nn.ReLU(True)]
+            dim *= 2
+        for _ in range(n_blocks):
+            model += [ResnetBlock(dim)]
+        for _ in range(2):
+            model += [nn.ConvTranspose2d(dim, dim//2, 3, stride=2, padding=1, output_padding=1), nn.InstanceNorm2d(dim//2), nn.ReLU(True)]
+            dim //= 2
+        model += [nn.ReflectionPad2d(3), nn.Conv2d(64,out_channels,7), nn.Tanh()]
+        self.model = nn.Sequential(*model)
+    def forward(self,x): return self.model(x)
+
+class Discriminator(nn.Module):
+    def __init__(self, in_channels=3):
+        super().__init__()
+        model = [nn.Conv2d(in_channels,64,4,2,1), nn.LeakyReLU(0.2, True)]
+        dim = 64
+        for out_dim in [128,256,512]:
+            model += [nn.Conv2d(dim,out_dim,4,2,1), nn.InstanceNorm2d(out_dim), nn.LeakyReLU(0.2, True)]
+            dim = out_dim
+        model += [nn.Conv2d(dim,1,4,1,1)]
+        self.model = nn.Sequential(*model)
+    def forward(self,x): return self.model(x)
+
+G_AB = Generator().to(device)
+G_BA = Generator().to(device)
+D_A  = Discriminator().to(device)
+D_B  = Discriminator().to(device)
+
+criterion_GAN = nn.MSELoss().to(device)
+criterion_cycle = nn.L1Loss().to(device)
+criterion_identity = nn.L1Loss().to(device)
+optimizer_G = optim.Adam(itertools.chain(G_AB.parameters(), G_BA.parameters()), lr=2e-4, betas=(0.5,0.999))
+optimizer_D_A = optim.Adam(D_A.parameters(), lr=2e-4, betas=(0.5,0.999))
+optimizer_D_B = optim.Adam(D_B.parameters(), lr=2e-4, betas=(0.5,0.999))
+scheduler_G = optim.lr_scheduler.ReduceLROnPlateau(optimizer_G, mode='min', factor=0.5, patience=5)
+scheduler_D_A = optim.lr_scheduler.ReduceLROnPlateau(optimizer_D_A, mode='min', factor=0.5, patience=5)
+scheduler_D_B = optim.lr_scheduler.ReduceLROnPlateau(optimizer_D_B, mode='min', factor=0.5, patience=5)
+
+def find_latest_epoch(model_dir):
+    files = glob.glob(os.path.join(model_dir, "*.pth"))
+    epochs = []
+    for f in files:
+        fn = os.path.basename(f)
+        import re
+        m = re.search(r"epoch(\d+)", fn)
+        if m:
+            epochs.append(int(m.group(1)))
+    return max(epochs) if epochs else 0
+
+latest = find_latest_epoch(MODEL_DIR)
+if latest > 0:
+    print(f"Found latest epoch: {latest}, loading weights...")
+    G_AB.load_state_dict(torch.load(os.path.join(MODEL_DIR, f"G_AB_epoch{latest}.pth"), map_location=device))
+    G_BA.load_state_dict(torch.load(os.path.join(MODEL_DIR, f"G_BA_epoch{latest}.pth"), map_location=device))
+    D_A.load_state_dict(torch.load(os.path.join(MODEL_DIR, f"D_A_epoch{latest}.pth"), map_location=device))
+    D_B.load_state_dict(torch.load(os.path.join(MODEL_DIR, f"D_B_epoch{latest}.pth"), map_location=device))
+    start_epoch = latest + 1
+else:
+    print("No checkpoint found; starting from epoch 1")
+    start_epoch = 1
+end_epoch = start_epoch + ADD_EPOCHS - 1
+print(f"Will run epochs: {start_epoch} → {end_epoch}")
+
+def new_metrics():
+    fid = FrechetInceptionDistance(normalize=True).to(device)
+    iscore = InceptionScore(normalize=True).to(device)
+    ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+    return fid, iscore, ssim
+
+def denorm(t):
+    return (t.clamp(-1,1) + 1.0) / 2.0
+
+def save_pair_grid(real_tensor, fake_tensor, outpath):
+    r = denorm(real_tensor[0]).cpu()
+    f = denorm(fake_tensor[0]).cpu()
+    grid = torch.cat([r, f], dim=2)
+    arr = (grid.permute(1,2,0).numpy()*255).astype("uint8")
+    Image.fromarray(arr).save(outpath)
+
+valA_files = [p for p in glob.glob(os.path.join(DATA_ROOT, "testA", "*.*"))][:VAL_SUBSET]
+valB_files = [p for p in glob.glob(os.path.join(DATA_ROOT, "testB", "*.*"))][:VAL_SUBSET]
+if len(valA_files) == 0:
+    valA_files = [p for p in glob.glob(os.path.join(DATA_ROOT, "trainA", "*.*"))][:min(VAL_SUBSET, len(trainA_ds.files))]
+if len(valB_files) == 0:
+    valB_files = [p for p in glob.glob(os.path.join(DATA_ROOT, "trainB", "*.*"))][:min(VAL_SUBSET, len(trainB_ds.files))]
+
+epoch_history = []
+fid_history = []
+is_history = []
+ssim_history = []
+best_epoch = latest
+best_fid = float("inf")
+
+for epoch in range(start_epoch, end_epoch + 1):
+    epoch_start = time.time()
+    G_AB.train(); G_BA.train(); D_A.train(); D_B.train()
+    loop = tqdm(zip(trainA_loader, trainB_loader), total=min(len(trainA_loader), len(trainB_loader)), desc=f"Epoch {epoch}/{end_epoch}")
+    for (batchA, batchB) in loop:
+        realA = batchA[0].to(device)
+        realB = batchB[0].to(device)
+        optimizer_G.zero_grad()
+        idt_B = G_AB(realB)
+        loss_idt_B = criterion_identity(idt_B, realB) * 5.0
+        idt_A = G_BA(realA)
+        loss_idt_A = criterion_identity(idt_A, realA) * 5.0
+        fakeB = G_AB(realA)
+        pred_fakeB = D_B(fakeB)
+        validB = torch.ones_like(pred_fakeB).to(device)
+        loss_GAN_AB = criterion_GAN(pred_fakeB, validB)
+        fakeA = G_BA(realB)
+        pred_fakeA = D_A(fakeA)
+        validA = torch.ones_like(pred_fakeA).to(device)
+        loss_GAN_BA = criterion_GAN(pred_fakeA, validA)
+        recA = G_BA(fakeB)
+        loss_cycle_A = criterion_cycle(recA, realA) * 10.0
+        recB = G_AB(fakeA)
+        loss_cycle_B = criterion_cycle(recB, realB) * 10.0
+        loss_G = loss_GAN_AB + loss_GAN_BA + loss_cycle_A + loss_cycle_B + loss_idt_A + loss_idt_B
+        loss_G.backward(); optimizer_G.step()
+        optimizer_D_A.zero_grad()
+        pred_real = D_A(realA)
+        loss_D_real = criterion_GAN(pred_real, torch.ones_like(pred_real).to(device))
+        pred_fake = D_A(fakeA.detach())
+        loss_D_fake = criterion_GAN(pred_fake, torch.zeros_like(pred_fake).to(device))
+        loss_D_A = (loss_D_real + loss_D_fake) * 0.5
+        loss_D_A.backward(); optimizer_D_A.step()
+        optimizer_D_B.zero_grad()
+        pred_real = D_B(realB)
+        loss_D_real = criterion_GAN(pred_real, torch.ones_like(pred_real).to(device))
+        pred_fake = D_B(fakeB.detach())
+        loss_D_fake = criterion_GAN(pred_fake, torch.zeros_like(pred_fake).to(device))
+        loss_D_B = (loss_D_real + loss_D_fake) * 0.5
+        loss_D_B.backward(); optimizer_D_B.step()
+        loop.set_postfix(D_A=loss_D_A.item(), D_B=loss_D_B.item(), G=loss_G.item())
+    torch.save(G_AB.state_dict(), os.path.join(MODEL_DIR, f"G_AB_epoch{epoch}.pth"))
+    torch.save(G_BA.state_dict(), os.path.join(MODEL_DIR, f"G_BA_epoch{epoch}.pth"))
+    torch.save(D_A.state_dict(), os.path.join(MODEL_DIR, f"D_A_epoch{epoch}.pth"))
+    torch.save(D_B.state_dict(), os.path.join(MODEL_DIR, f"D_B_epoch{epoch}.pth"))
+    print(f"✅ Saved checkpoints for epoch {epoch}")
+    G_AB.eval(); G_BA.eval()
+    fid, iscore, ssim = new_metrics()
+    with torch.no_grad():
+        for p in valA_files:
+            img = test_transform(Image.open(p).convert("RGB")).unsqueeze(0).to(device)
+            fake = G_AB(img)
+            fid.update(denorm(img), real=True)
+            fid.update(denorm(fake), real=False)
+            try: iscore.update(denorm(fake))
+            except: pass
+            ssim.update(denorm(img), denorm(fake))
+        for p in valB_files:
+            img = test_transform(Image.open(p).convert("RGB")).unsqueeze(0).to(device)
+            fake = G_BA(img)
+            fid.update(denorm(img), real=True)
+            fid.update(denorm(fake), real=False)
+            try: iscore.update(denorm(fake))
+            except: pass
+            ssim.update(denorm(img), denorm(fake))
+    try: fid_val = fid.compute().item()
+    except: fid_val = float("inf")
+    try: is_val = iscore.compute().item()
+    except: is_val = float("nan")
+    try: ssim_val = ssim.compute().item()
+    except: ssim_val = float("nan")
+    print(f"Epoch {epoch} — VAL FID: {fid_val:.4f} | IS: {is_val:.4f} | SSIM: {ssim_val:.4f}")
+    epoch_history.append(epoch)
+    fid_history.append(fid_val)
+    is_history.append(is_val)
+    ssim_history.append(ssim_val)
+    scheduler_G.step(fid_val)
+    scheduler_D_A.step(fid_val)
+    scheduler_D_B.step(fid_val)
+    try:
+        sampleA_path = valA_files[0]
+        sampleB_path = valB_files[0]
+        imgA = test_transform(Image.open(sampleA_path).convert("RGB")).unsqueeze(0).to(device)
+        imgB = test_transform(Image.open(sampleB_path).convert("RGB")).unsqueeze(0).to(device)
+        with torch.no_grad():
+            fakeB = G_AB(imgA)
+            fakeA = G_BA(imgB)
+        save_pair_grid(imgA, fakeB, os.path.join(SAMPLES_DIR, f"epoch{epoch}_A2B.jpg"))
+        save_pair_grid(imgB, fakeA, os.path.join(SAMPLES_DIR, f"epoch{epoch}_B2A.jpg"))
+    except Exception as e:
+        print("Could not save epoch sample:", e)
+    if fid_val < best_fid:
+        best_fid = fid_val
+        best_epoch = epoch
+        print(f"🏆 New best epoch: {epoch} (FID {fid_val:.4f})")
+    epoch_time = time.time() - epoch_start
+    print(f"Epoch {epoch} done in {epoch_time:.1f}s\n")
+
+print("Training finished.")
+print("Epochs run:", epoch_history)
+print("Best epoch (by validation FID):", best_epoch, "with FID", best_fid)
