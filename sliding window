@@ -1,0 +1,405 @@
+1. Maximum Sum Subarray of Size K
+Question
+
+Given an array and an integer k, find the maximum sum of any subarray of size k.
+
+n = int(input())
+arr = list(map(int, input().split()))
+k = int(input())
+
+window = sum(arr[:k])
+ans = window
+
+for i in range(k, n):
+    window += arr[i] - arr[i-k]
+    ans = max(ans, window)
+
+print(ans)
+2. First Negative Number in Every Window of Size K
+from collections import deque
+
+n = int(input())
+arr = list(map(int, input().split()))
+k = int(input())
+
+q = deque()
+
+for i in range(n):
+
+    if arr[i] < 0:
+        q.append(i)
+
+    while q and q[0] <= i-k:
+        q.popleft()
+
+    if i >= k-1:
+        if q:
+            print(arr[q[0]], end=" ")
+        else:
+            print(0, end=" ")
+3. Maximum Element in Every Window
+from collections import deque
+
+arr = list(map(int, input().split()))
+k = int(input())
+
+dq = deque()
+
+for i in range(len(arr)):
+
+    while dq and dq[0] <= i-k:
+        dq.popleft()
+
+    while dq and arr[dq[-1]] <= arr[i]:
+        dq.pop()
+
+    dq.append(i)
+
+    if i >= k-1:
+        print(arr[dq[0]], end=" ")
+4. Minimum Size Subarray Sum ≥ Target
+arr = list(map(int, input().split()))
+target = int(input())
+
+left = 0
+total = 0
+ans = float('inf')
+
+for right in range(len(arr)):
+    total += arr[right]
+
+    while total >= target:
+        ans = min(ans, right-left+1)
+        total -= arr[left]
+        left += 1
+
+print(ans if ans != float('inf') else 0)
+5. Longest Substring Without Repeating Characters
+s = input()
+
+left = 0
+seen = {}
+ans = 0
+
+for right in range(len(s)):
+
+    if s[right] in seen and seen[s[right]] >= left:
+        left = seen[s[right]] + 1
+
+    seen[s[right]] = right
+    ans = max(ans, right-left+1)
+
+print(ans)
+6. Longest Repeating Character Replacement
+from collections import defaultdict
+
+s = input()
+k = int(input())
+
+count = defaultdict(int)
+
+left = 0
+mx = 0
+ans = 0
+
+for right in range(len(s)):
+    count[s[right]] += 1
+    mx = max(mx, count[s[right]])
+
+    while (right-left+1)-mx > k:
+        count[s[left]] -= 1
+        left += 1
+
+    ans = max(ans, right-left+1)
+
+print(ans)
+7. Permutation in String
+from collections import Counter
+
+s1 = input()
+s2 = input()
+
+need = Counter(s1)
+window = Counter()
+
+k = len(s1)
+
+for i in range(len(s2)):
+    window[s2[i]] += 1
+
+    if i >= k:
+        window[s2[i-k]] -= 1
+        if window[s2[i-k]] == 0:
+            del window[s2[i-k]]
+
+    if window == need:
+        print(True)
+        break
+else:
+    print(False)
+8. Find All Anagrams
+from collections import Counter
+
+s = input()
+p = input()
+
+need = Counter(p)
+window = Counter()
+
+k = len(p)
+
+for i in range(len(s)):
+    window[s[i]] += 1
+
+    if i >= k:
+        window[s[i-k]] -= 1
+        if window[s[i-k]] == 0:
+            del window[s[i-k]]
+
+    if window == need:
+        print(i-k+1, end=" ")
+9. Longest Subarray with Sum K (Positive Numbers)
+arr = list(map(int, input().split()))
+k = int(input())
+
+left = 0
+total = 0
+ans = 0
+
+for right in range(len(arr)):
+    total += arr[right]
+
+    while total > k:
+        total -= arr[left]
+        left += 1
+
+    if total == k:
+        ans = max(ans, right-left+1)
+
+print(ans)
+10. Count Subarrays with Sum Less Than K
+arr = list(map(int, input().split()))
+k = int(input())
+
+left = 0
+total = 0
+ans = 0
+
+for right in range(len(arr)):
+    total += arr[right]
+
+    while total >= k:
+        total -= arr[left]
+        left += 1
+
+    ans += right-left+1
+
+print(ans)
+11. Fruits Into Baskets
+arr = list(map(int, input().split()))
+
+left = 0
+count = {}
+ans = 0
+
+for right in range(len(arr)):
+    count[arr[right]] = count.get(arr[right],0)+1
+
+    while len(count) > 2:
+        count[arr[left]] -= 1
+        if count[arr[left]] == 0:
+            del count[arr[left]]
+        left += 1
+
+    ans = max(ans, right-left+1)
+
+print(ans)
+12. Longest Substring with At Most K Distinct Characters
+s = input()
+k = int(input())
+
+left = 0
+count = {}
+ans = 0
+
+for right in range(len(s)):
+    count[s[right]] = count.get(s[right],0)+1
+
+    while len(count) > k:
+        count[s[left]] -= 1
+        if count[s[left]] == 0:
+            del count[s[left]]
+        left += 1
+
+    ans = max(ans, right-left+1)
+
+print(ans)
+13. Minimum Window Substring
+from collections import Counter
+
+s = input()
+t = input()
+
+need = Counter(t)
+missing = len(t)
+
+left = start = end = 0
+
+for right,ch in enumerate(s,1):
+
+    if need[ch] > 0:
+        missing -= 1
+
+    need[ch] -= 1
+
+    if missing == 0:
+
+        while left < right and need[s[left]] < 0:
+            need[s[left]] += 1
+            left += 1
+
+        if end == 0 or right-left < end-start:
+            start,end = left,right
+
+        need[s[left]] += 1
+        missing += 1
+        left += 1
+
+print(s[start:end])
+14. Sliding Window Average
+arr = list(map(int,input().split()))
+k=int(input())
+
+window=sum(arr[:k])
+
+print(window/k)
+
+for i in range(k,len(arr)):
+    window+=arr[i]-arr[i-k]
+    print(window/k)
+15. Count Occurrences of Anagrams
+from collections import Counter
+
+txt=input()
+pat=input()
+
+need=Counter(pat)
+window=Counter()
+
+k=len(pat)
+ans=0
+
+for i in range(len(txt)):
+    window[txt[i]]+=1
+
+    if i>=k:
+        window[txt[i-k]]-=1
+        if window[txt[i-k]]==0:
+            del window[txt[i-k]]
+
+    if window==need:
+        ans+=1
+
+print(ans)
+16. Maximum Consecutive Ones III
+arr=list(map(int,input().split()))
+k=int(input())
+
+left=0
+zero=0
+ans=0
+
+for right in range(len(arr)):
+    if arr[right]==0:
+        zero+=1
+
+    while zero>k:
+        if arr[left]==0:
+            zero-=1
+        left+=1
+
+    ans=max(ans,right-left+1)
+
+print(ans)
+17. Longest Ones After Deleting One Element
+arr=list(map(int,input().split()))
+
+left=0
+zero=0
+ans=0
+
+for right in range(len(arr)):
+    if arr[right]==0:
+        zero+=1
+
+    while zero>1:
+        if arr[left]==0:
+            zero-=1
+        left+=1
+
+    ans=max(ans,right-left)
+
+print(ans)
+18. Subarrays with At Most K Distinct
+arr=list(map(int,input().split()))
+k=int(input())
+
+left=0
+count={}
+ans=0
+
+for right in range(len(arr)):
+    count[arr[right]]=count.get(arr[right],0)+1
+
+    while len(count)>k:
+        count[arr[left]]-=1
+        if count[arr[left]]==0:
+            del count[arr[left]]
+        left+=1
+
+    ans+=right-left+1
+
+print(ans)
+19. Maximum Number of Vowels in a Window
+s=input()
+k=int(input())
+
+vowels=set("aeiou")
+
+count=0
+
+for i in range(k):
+    if s[i] in vowels:
+        count+=1
+
+ans=count
+
+for i in range(k,len(s)):
+    if s[i-k] in vowels:
+        count-=1
+    if s[i] in vowels:
+        count+=1
+    ans=max(ans,count)
+
+print(ans)
+20. Longest Substring with Exactly K Distinct Characters
+s=input()
+k=int(input())
+
+left=0
+count={}
+ans=-1
+
+for right in range(len(s)):
+    count[s[right]]=count.get(s[right],0)+1
+
+    while len(count)>k:
+        count[s[left]]-=1
+        if count[s[left]]==0:
+            del count[s[left]]
+        left+=1
+
+    if len(count)==k:
+        ans=max(ans,right-left+1)
+
+print(ans)
