@@ -1,0 +1,235 @@
+1. Reverse Words in a String
+Question
+
+Given a string, reverse the order of words.
+
+Input
+
+I love Python
+
+Output
+
+Python love I
+s = input()
+
+print(" ".join(s.split()[::-1]))
+
+2. Check Anagram
+Question
+
+Check whether two strings are anagrams.
+
+s1 = input()
+s2 = input()
+
+if sorted(s1) == sorted(s2):
+    print("Yes")
+else:
+    print("No")
+
+3. Remove Duplicate Characters
+Question
+
+Remove duplicate characters while preserving order.
+
+Input
+
+programming
+
+Output
+
+progamin
+s = input()
+
+ans = ""
+
+for ch in s:
+    if ch not in ans:
+        ans += ch
+
+print(ans)
+
+4. First Non-Repeating Character
+from collections import Counter
+
+s = input()
+
+count = Counter(s)
+
+for ch in s:
+    if count[ch] == 1:
+        print(ch)
+        break
+else:
+    print(-1)
+
+5. Longest Common Prefix
+arr = input().split()
+
+prefix = arr[0]
+
+for word in arr[1:]:
+    while not word.startswith(prefix):
+        prefix = prefix[:-1]
+
+print(prefix)
+
+6. Compress String (Run Length Encoding)
+
+Input
+
+aaabbcccc
+
+Output
+
+a3b2c4
+s = input()
+
+ans = ""
+count = 1
+
+for i in range(1, len(s)):
+    if s[i] == s[i-1]:
+        count += 1
+    else:
+        ans += s[i-1] + str(count)
+        count = 1
+
+ans += s[-1] + str(count)
+
+print(ans)
+
+7. Check Palindrome Ignoring Spaces and Cases
+s = input()
+
+s = "".join(s.lower().split())
+
+if s == s[::-1]:
+    print("Palindrome")
+else:
+    print("Not")
+8. Count Vowels and Consonants
+s = input().lower()
+
+v = c = 0
+
+for ch in s:
+    if ch.isalpha():
+        if ch in "aeiou":
+            v += 1
+        else:
+            c += 1
+
+print(v, c)
+
+9. Most Frequent Character
+from collections import Counter
+
+s = input()
+
+count = Counter(s)
+
+print(max(count, key=count.get))
+10. Rotate String Left by K
+s = input()
+
+k = int(input())
+
+k %= len(s)
+
+print(s[k:] + s[:k])
+11. Find All Substrings
+s = input()
+
+for i in range(len(s)):
+    for j in range(i+1, len(s)+1):
+        print(s[i:j])
+
+12. Longest Word
+s = input()
+
+words = s.split()
+
+print(max(words, key=len))
+13. Character Frequency Without Counter
+s = input()
+
+freq = {}
+
+for ch in s:
+    freq[ch] = freq.get(ch, 0) + 1
+
+print(freq)
+14. Check Rotation
+s1 = input()
+s2 = input()
+
+if len(s1) == len(s2) and s2 in s1+s1:
+    print("Yes")
+else:
+    print("No")
+15. Replace Multiple Spaces with Single Space
+s = input()
+
+print(" ".join(s.split()))
+16. Find Second Most Frequent Character
+from collections import Counter
+
+s = input()
+
+count = Counter(s)
+
+arr = sorted(count.items(), key=lambda x: x[1], reverse=True)
+
+print(arr[1][0])
+17. Remove All Digits
+s = input()
+
+ans = ""
+
+for ch in s:
+    if not ch.isdigit():
+        ans += ch
+
+print(ans)
+18. Check Isomorphic Strings
+s = input()
+t = input()
+
+m1 = {}
+m2 = {}
+
+ok = True
+
+for a, b in zip(s, t):
+    if m1.get(a, b) != b or m2.get(b, a) != a:
+        ok = False
+        break
+    m1[a] = b
+    m2[b] = a
+
+print(ok)
+19. Longest Palindromic Substring (Brute Force)
+s = input()
+
+ans = ""
+
+for i in range(len(s)):
+    for j in range(i+1, len(s)+1):
+        t = s[i:j]
+        if t == t[::-1] and len(t) > len(ans):
+            ans = t
+
+print(ans)
+20. Group Anagrams
+from collections import defaultdict
+
+arr = input().split()
+
+d = defaultdict(list)
+
+for word in arr:
+    key = "".join(sorted(word))
+    d[key].append(word)
+
+print(list(d.values()))
